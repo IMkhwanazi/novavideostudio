@@ -14,16 +14,443 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      assets: {
+        Row: {
+          created_at: string
+          id: string
+          kind: string
+          mime_type: string | null
+          name: string
+          project_id: string | null
+          size_bytes: number | null
+          storage_path: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          kind?: string
+          mime_type?: string | null
+          name?: string
+          project_id?: string | null
+          size_bytes?: number | null
+          storage_path: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          kind?: string
+          mime_type?: string | null
+          name?: string
+          project_id?: string | null
+          size_bytes?: number | null
+          storage_path?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "assets_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      credits_ledger: {
+        Row: {
+          amount: number
+          created_at: string
+          description: string | null
+          generation_id: string | null
+          id: string
+          kind: string
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          description?: string | null
+          generation_id?: string | null
+          id?: string
+          kind?: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          description?: string | null
+          generation_id?: string | null
+          id?: string
+          kind?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "credits_ledger_generation_id_fkey"
+            columns: ["generation_id"]
+            isOneToOne: false
+            referencedRelation: "generations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      generation_jobs: {
+        Row: {
+          created_at: string
+          error_message: string | null
+          generation_id: string
+          id: string
+          progress: number
+          project_id: string | null
+          provider: string
+          provider_job_id: string | null
+          stage_message: string
+          status: Database["public"]["Enums"]["job_status"]
+          updated_at: string
+          user_id: string
+          video_path: string | null
+        }
+        Insert: {
+          created_at?: string
+          error_message?: string | null
+          generation_id: string
+          id?: string
+          progress?: number
+          project_id?: string | null
+          provider?: string
+          provider_job_id?: string | null
+          stage_message?: string
+          status?: Database["public"]["Enums"]["job_status"]
+          updated_at?: string
+          user_id: string
+          video_path?: string | null
+        }
+        Update: {
+          created_at?: string
+          error_message?: string | null
+          generation_id?: string
+          id?: string
+          progress?: number
+          project_id?: string | null
+          provider?: string
+          provider_job_id?: string | null
+          stage_message?: string
+          status?: Database["public"]["Enums"]["job_status"]
+          updated_at?: string
+          user_id?: string
+          video_path?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "generation_jobs_generation_id_fkey"
+            columns: ["generation_id"]
+            isOneToOne: false
+            referencedRelation: "generations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "generation_jobs_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      generations: {
+        Row: {
+          created_at: string
+          credits_cost: number
+          enhanced_prompt: string | null
+          id: string
+          mode: string
+          model_tier: string
+          negative_prompt: string | null
+          project_id: string | null
+          prompt: string
+          provider: string
+          scene_id: string | null
+          settings: Json
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          credits_cost?: number
+          enhanced_prompt?: string | null
+          id?: string
+          mode?: string
+          model_tier?: string
+          negative_prompt?: string | null
+          project_id?: string | null
+          prompt: string
+          provider?: string
+          scene_id?: string | null
+          settings?: Json
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          credits_cost?: number
+          enhanced_prompt?: string | null
+          id?: string
+          mode?: string
+          model_tier?: string
+          negative_prompt?: string | null
+          project_id?: string | null
+          prompt?: string
+          provider?: string
+          scene_id?: string | null
+          settings?: Json
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "generations_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "generations_scene_id_fkey"
+            columns: ["scene_id"]
+            isOneToOne: false
+            referencedRelation: "scenes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      notifications: {
+        Row: {
+          body: string | null
+          created_at: string
+          id: string
+          kind: string
+          read: boolean
+          title: string
+          user_id: string
+        }
+        Insert: {
+          body?: string | null
+          created_at?: string
+          id?: string
+          kind?: string
+          read?: boolean
+          title: string
+          user_id: string
+        }
+        Update: {
+          body?: string | null
+          created_at?: string
+          id?: string
+          kind?: string
+          read?: boolean
+          title?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          created_at: string
+          credits: number
+          display_name: string | null
+          email: string | null
+          id: string
+          plan: string
+          updated_at: string
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string
+          credits?: number
+          display_name?: string | null
+          email?: string | null
+          id: string
+          plan?: string
+          updated_at?: string
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string
+          credits?: number
+          display_name?: string | null
+          email?: string | null
+          id?: string
+          plan?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      projects: {
+        Row: {
+          aspect_ratio: string
+          created_at: string
+          duration_seconds: number
+          fps: number
+          id: string
+          mode: string
+          resolution: string
+          status: string
+          thumbnail_url: string | null
+          title: string
+          updated_at: string
+          user_id: string
+          video_path: string | null
+        }
+        Insert: {
+          aspect_ratio?: string
+          created_at?: string
+          duration_seconds?: number
+          fps?: number
+          id?: string
+          mode?: string
+          resolution?: string
+          status?: string
+          thumbnail_url?: string | null
+          title?: string
+          updated_at?: string
+          user_id: string
+          video_path?: string | null
+        }
+        Update: {
+          aspect_ratio?: string
+          created_at?: string
+          duration_seconds?: number
+          fps?: number
+          id?: string
+          mode?: string
+          resolution?: string
+          status?: string
+          thumbnail_url?: string | null
+          title?: string
+          updated_at?: string
+          user_id?: string
+          video_path?: string | null
+        }
+        Relationships: []
+      }
+      scenes: {
+        Row: {
+          camera: string | null
+          created_at: string
+          duration_seconds: number
+          id: string
+          position: number
+          project_id: string
+          prompt: string
+          style: string | null
+          thumbnail_url: string | null
+          transition: string | null
+          updated_at: string
+          user_id: string
+          video_path: string | null
+        }
+        Insert: {
+          camera?: string | null
+          created_at?: string
+          duration_seconds?: number
+          id?: string
+          position?: number
+          project_id: string
+          prompt?: string
+          style?: string | null
+          thumbnail_url?: string | null
+          transition?: string | null
+          updated_at?: string
+          user_id: string
+          video_path?: string | null
+        }
+        Update: {
+          camera?: string | null
+          created_at?: string
+          duration_seconds?: number
+          id?: string
+          position?: number
+          project_id?: string
+          prompt?: string
+          style?: string | null
+          thumbnail_url?: string | null
+          transition?: string | null
+          updated_at?: string
+          user_id?: string
+          video_path?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scenes_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_roles: {
+        Row: {
+          created_at: string
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
+      refund_credits: {
+        Args: {
+          _amount: number
+          _description: string
+          _generation_id: string
+          _user_id: string
+        }
+        Returns: number
+      }
+      spend_credits: {
+        Args: {
+          _amount: number
+          _description: string
+          _generation_id: string
+          _user_id: string
+        }
+        Returns: number
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "admin" | "user"
+      job_status:
+        | "queued"
+        | "processing"
+        | "generating"
+        | "rendering"
+        | "completed"
+        | "failed"
+        | "cancelled"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +577,17 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["admin", "user"],
+      job_status: [
+        "queued",
+        "processing",
+        "generating",
+        "rendering",
+        "completed",
+        "failed",
+        "cancelled",
+      ],
+    },
   },
 } as const
