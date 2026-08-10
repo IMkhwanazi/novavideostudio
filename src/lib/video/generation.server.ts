@@ -106,7 +106,7 @@ export async function startGeneration(params: {
       prompt: params.prompt,
       enhanced_prompt: params.enhancedPrompt ?? null,
       negative_prompt: params.negativePrompt ?? null,
-      settings: settings as unknown as Database["public"]["Tables"]["generations"]["Insert"]["settings"],
+      settings: settings as unknown as Database["public"]["Tables"]["generations"]["Row"]["settings"],
       model_tier: settings.modelTier,
       credits_cost: credits,
     })
@@ -200,7 +200,7 @@ export async function failJob(
       _user_id: userId,
       _amount: credits,
       _description: status === "cancelled" ? "Generation cancelled" : "Generation failed",
-      _generation_id: generationId,
+      _generation_id: generationId as string,
     });
   }
   await client.from("notifications").insert({
