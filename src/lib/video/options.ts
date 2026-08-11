@@ -67,8 +67,8 @@ export const MODEL_TIERS: {
   { id: "quality", label: "High Quality", speed: "Slowest", quality: "Maximum", multiplier: 2.4 },
 ];
 
-export const DURATIONS = [4, 6, 8] as const;
-export const LOCKED_DURATIONS = [15, 30, 60] as const;
+export const DURATIONS = [4, 6, 8, 15, 30] as const;
+export const LOCKED_DURATIONS = [60] as const;
 export const ASPECT_RATIOS = ["16:9", "9:16"] as const;
 export const LOCKED_ASPECT_RATIOS = ["1:1", "4:5"] as const;
 export const RESOLUTIONS = ["720p", "1080p"] as const;
