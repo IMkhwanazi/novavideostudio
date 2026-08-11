@@ -9,9 +9,8 @@ import {
   Type,
   Wand2,
 } from "lucide-react";
-import { Logo } from "@/components/brand/Logo";
 import { Button } from "@/components/ui/button";
-import { useAuth } from "@/hooks/useAuth";
+import { Logo } from "@/components/brand/Logo";
 import { GENERATION_MODES } from "@/lib/video/options";
 
 const title = "Videonova AI — Generate cinematic video from a single prompt";
@@ -42,8 +41,7 @@ const FEATURES = [
 ];
 
 function Landing() {
-  const { isAuthenticated } = useAuth();
-  const primaryHref = isAuthenticated ? "/studio" : "/auth";
+  const primaryHref = "/studio";
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -57,7 +55,7 @@ function Landing() {
           </nav>
           <div className="flex items-center gap-2">
             <Button asChild variant="ghost" size="sm">
-              <Link to={primaryHref}>{isAuthenticated ? "Studio" : "Sign in"}</Link>
+              <Link to={primaryHref}>Studio</Link>
             </Button>
             <Button asChild size="sm" className="bg-gradient-brand text-primary-foreground glow-ring">
               <Link to={primaryHref}>Start creating</Link>

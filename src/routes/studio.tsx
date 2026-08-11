@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { Download, Loader2, Sparkles, Wand2, X } from "lucide-react";
@@ -16,7 +16,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import {
   ASPECT_RATIOS,
@@ -59,7 +58,6 @@ export const Route = createFileRoute("/studio")({
 type JobView = Awaited<ReturnType<typeof pollGeneration>>;
 
 function Studio() {
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { isAuthenticated, loading } = useAuth();
 
