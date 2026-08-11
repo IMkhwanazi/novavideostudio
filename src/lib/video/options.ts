@@ -126,7 +126,7 @@ export type VideoSettings = {
 };
 
 export const DEFAULT_SETTINGS: VideoSettings = {
-  durationSeconds: 8,
+  durationSeconds: 30,
   aspectRatio: "16:9",
   resolution: "720p",
   fps: 24,
