@@ -74,10 +74,6 @@ function Studio() {
   const runPoll = useServerFn(pollGeneration);
   const runCancel = useServerFn(cancelGeneration);
 
-  useEffect(() => {
-    if (!loading && !isAuthenticated) navigate({ to: "/auth", replace: true });
-  }, [loading, isAuthenticated, navigate]);
-
   const state = useQuery({
     queryKey: ["studio-state"],
     queryFn: () => fetchState({}),
@@ -137,13 +133,6 @@ function Studio() {
     queryClient.invalidateQueries({ queryKey: ["studio-state"] });
   }
 
-  async function signOut() {
-    await queryClient.cancelQueries();
-    queryClient.clear();
-    await supabase.auth.signOut();
-    navigate({ to: "/auth", replace: true });
-  }
-
   if (loading || !isAuthenticated) {
     return (
       <div className="grid min-h-screen place-items-center bg-background">
@@ -161,8 +150,8 @@ function Studio() {
             <span className="rounded-full border border-border/70 bg-card/60 px-3 py-1.5 text-xs text-muted-foreground">
               {state.data?.credits ?? 0} credits
             </span>
-            <Button variant="ghost" size="sm" onClick={signOut}>
-              Sign out
+            <Button asChild variant="ghost" size="sm">
+              <Link to="/">Home</Link>
             </Button>
           </div>
         </div>
