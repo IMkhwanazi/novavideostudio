@@ -194,7 +194,7 @@ function Studio() {
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {DURATIONS.map((d) => (
-                    <SelectItem key={d} value={String(d)}>{d}s</SelectItem>
+                    <SelectItem key={d} value={String(d)}>{formatDuration(d)}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
