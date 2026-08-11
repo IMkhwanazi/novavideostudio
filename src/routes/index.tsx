@@ -91,7 +91,7 @@ function Landing() {
               </Button>
             </div>
             <p className="mt-4 text-xs text-muted-foreground">
-              Free credits on sign-up · No credit card required
+              Free credits included · No sign-up, no credit card
             </p>
 
             <div className="glass-panel glow-ring mx-auto mt-16 w-full max-w-3xl rounded-2xl p-3 text-left">
@@ -182,7 +182,7 @@ function Landing() {
               Your first video is minutes away
             </h2>
             <p className="mx-auto mt-3 max-w-md text-sm text-muted-foreground">
-              Sign up and start generating with free credits today.
+              Jump straight into the studio and start generating with free credits.
             </p>
             <Button asChild size="lg" className="mt-7 h-12 bg-gradient-brand px-7 text-primary-foreground">
               <Link to={primaryHref}>
