@@ -260,6 +260,7 @@ export type Database = {
           display_name: string | null
           email: string | null
           id: string
+          last_credit_grant: string | null
           plan: string
           updated_at: string
         }
@@ -270,6 +271,7 @@ export type Database = {
           display_name?: string | null
           email?: string | null
           id: string
+          last_credit_grant?: string | null
           plan?: string
           updated_at?: string
         }
@@ -280,6 +282,7 @@ export type Database = {
           display_name?: string | null
           email?: string | null
           id?: string
+          last_credit_grant?: string | null
           plan?: string
           updated_at?: string
         }
@@ -415,6 +418,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      claim_daily_credits: { Args: { _user_id: string }; Returns: number }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
