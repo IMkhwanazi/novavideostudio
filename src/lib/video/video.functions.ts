@@ -3,7 +3,7 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 
 const settingsSchema = z.object({
-  durationSeconds: z.number().int().min(1).max(60),
+  durationSeconds: z.number().int().min(60).max(360),
   aspectRatio: z.string().max(10),
   resolution: z.string().max(10),
   fps: z.number().int().min(12).max(60),
