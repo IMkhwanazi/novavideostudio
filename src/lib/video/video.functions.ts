@@ -126,7 +126,16 @@ export const getStudioState = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { toJobView } = await import("./generation.server");
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { supabase, userId } = context;
+
+    let grantedCredits: number | null = null;
+    try {
+      const { data: claimed } = await supabaseAdmin.rpc("claim_daily_credits", { _user_id: userId });
+      grantedCredits = typeof claimed === "number" ? claimed : null;
+    } catch (error) {
+      console.error("[claim_daily_credits]", error);
+    }
 
     const [profile, jobs] = await Promise.all([
       supabase.from("profiles").select("display_name, avatar_url, credits").eq("id", userId).maybeSingle(),
@@ -148,7 +157,7 @@ export const getStudioState = createServerFn({ method: "GET" })
     );
 
     return {
-      credits: profile.data?.credits ?? 0,
+      credits: grantedCredits ?? profile.data?.credits ?? 0,
       displayName: profile.data?.display_name ?? null,
       avatarUrl: profile.data?.avatar_url ?? null,
       history,
