@@ -9,9 +9,8 @@ import {
   Type,
   Wand2,
 } from "lucide-react";
-import { Logo } from "@/components/brand/Logo";
 import { Button } from "@/components/ui/button";
-import { useAuth } from "@/hooks/useAuth";
+import { Logo } from "@/components/brand/Logo";
 import { GENERATION_MODES } from "@/lib/video/options";
 
 const title = "Videonova AI — Generate cinematic video from a single prompt";
@@ -42,8 +41,7 @@ const FEATURES = [
 ];
 
 function Landing() {
-  const { isAuthenticated } = useAuth();
-  const primaryHref = isAuthenticated ? "/studio" : "/auth";
+  const primaryHref = "/studio";
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -57,7 +55,7 @@ function Landing() {
           </nav>
           <div className="flex items-center gap-2">
             <Button asChild variant="ghost" size="sm">
-              <Link to={primaryHref}>{isAuthenticated ? "Studio" : "Sign in"}</Link>
+              <Link to={primaryHref}>Studio</Link>
             </Button>
             <Button asChild size="sm" className="bg-gradient-brand text-primary-foreground glow-ring">
               <Link to={primaryHref}>Start creating</Link>
@@ -93,7 +91,7 @@ function Landing() {
               </Button>
             </div>
             <p className="mt-4 text-xs text-muted-foreground">
-              Free credits on sign-up · No credit card required
+              Free credits included · No sign-up, no credit card
             </p>
 
             <div className="glass-panel glow-ring mx-auto mt-16 w-full max-w-3xl rounded-2xl p-3 text-left">
@@ -184,7 +182,7 @@ function Landing() {
               Your first video is minutes away
             </h2>
             <p className="mx-auto mt-3 max-w-md text-sm text-muted-foreground">
-              Sign up and start generating with free credits today.
+              Jump straight into the studio and start generating with free credits.
             </p>
             <Button asChild size="lg" className="mt-7 h-12 bg-gradient-brand px-7 text-primary-foreground">
               <Link to={primaryHref}>

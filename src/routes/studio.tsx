@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { Download, Loader2, Sparkles, Wand2, X } from "lucide-react";
@@ -16,7 +16,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import {
   ASPECT_RATIOS,
@@ -59,7 +58,6 @@ export const Route = createFileRoute("/studio")({
 type JobView = Awaited<ReturnType<typeof pollGeneration>>;
 
 function Studio() {
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { isAuthenticated, loading } = useAuth();
 
@@ -73,10 +71,6 @@ function Studio() {
   const runCreate = useServerFn(createGeneration);
   const runPoll = useServerFn(pollGeneration);
   const runCancel = useServerFn(cancelGeneration);
-
-  useEffect(() => {
-    if (!loading && !isAuthenticated) navigate({ to: "/auth", replace: true });
-  }, [loading, isAuthenticated, navigate]);
 
   const state = useQuery({
     queryKey: ["studio-state"],
@@ -137,13 +131,6 @@ function Studio() {
     queryClient.invalidateQueries({ queryKey: ["studio-state"] });
   }
 
-  async function signOut() {
-    await queryClient.cancelQueries();
-    queryClient.clear();
-    await supabase.auth.signOut();
-    navigate({ to: "/auth", replace: true });
-  }
-
   if (loading || !isAuthenticated) {
     return (
       <div className="grid min-h-screen place-items-center bg-background">
@@ -161,8 +148,8 @@ function Studio() {
             <span className="rounded-full border border-border/70 bg-card/60 px-3 py-1.5 text-xs text-muted-foreground">
               {state.data?.credits ?? 0} credits
             </span>
-            <Button variant="ghost" size="sm" onClick={signOut}>
-              Sign out
+            <Button asChild variant="ghost" size="sm">
+              <Link to="/">Home</Link>
             </Button>
           </div>
         </div>
