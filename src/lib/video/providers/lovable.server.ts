@@ -35,8 +35,9 @@ async function readError(response: Response) {
 
 async function createJob(input: GenerateVideoInput): Promise<ProviderJob> {
   const { settings } = input;
-  // 1080p output is only produced for 8-second clips.
-  const seconds = settings.resolution === "1080p" ? "8" : String(settings.durationSeconds);
+  // The engine only renders 4, 6 or 8 second takes; long films are stitched
+  // from many of these, so every request asks for a full 8-second take.
+  const seconds = "8";
 
   const response = await fetch(BASE_URL, {
     method: "POST",
