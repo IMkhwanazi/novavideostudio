@@ -98,46 +98,55 @@ export type Database = {
       }
       generation_jobs: {
         Row: {
+          completed_segments: number
           created_at: string
           error_message: string | null
           generation_id: string
           id: string
+          merged: boolean
           progress: number
           project_id: string | null
           provider: string
           provider_job_id: string | null
           stage_message: string
           status: Database["public"]["Enums"]["job_status"]
+          total_segments: number
           updated_at: string
           user_id: string
           video_path: string | null
         }
         Insert: {
+          completed_segments?: number
           created_at?: string
           error_message?: string | null
           generation_id: string
           id?: string
+          merged?: boolean
           progress?: number
           project_id?: string | null
           provider?: string
           provider_job_id?: string | null
           stage_message?: string
           status?: Database["public"]["Enums"]["job_status"]
+          total_segments?: number
           updated_at?: string
           user_id: string
           video_path?: string | null
         }
         Update: {
+          completed_segments?: number
           created_at?: string
           error_message?: string | null
           generation_id?: string
           id?: string
+          merged?: boolean
           progress?: number
           project_id?: string | null
           provider?: string
           provider_job_id?: string | null
           stage_message?: string
           status?: Database["public"]["Enums"]["job_status"]
+          total_segments?: number
           updated_at?: string
           user_id?: string
           video_path?: string | null
@@ -155,6 +164,72 @@ export type Database = {
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      generation_segments: {
+        Row: {
+          attempts: number
+          created_at: string
+          error_message: string | null
+          generation_id: string
+          id: string
+          idx: number
+          job_id: string
+          provider_job_id: string | null
+          scene_prompt: string
+          seconds: number
+          status: string
+          updated_at: string
+          user_id: string
+          video_path: string | null
+        }
+        Insert: {
+          attempts?: number
+          created_at?: string
+          error_message?: string | null
+          generation_id: string
+          id?: string
+          idx: number
+          job_id: string
+          provider_job_id?: string | null
+          scene_prompt: string
+          seconds?: number
+          status?: string
+          updated_at?: string
+          user_id: string
+          video_path?: string | null
+        }
+        Update: {
+          attempts?: number
+          created_at?: string
+          error_message?: string | null
+          generation_id?: string
+          id?: string
+          idx?: number
+          job_id?: string
+          provider_job_id?: string | null
+          scene_prompt?: string
+          seconds?: number
+          status?: string
+          updated_at?: string
+          user_id?: string
+          video_path?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "generation_segments_generation_id_fkey"
+            columns: ["generation_id"]
+            isOneToOne: false
+            referencedRelation: "generations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "generation_segments_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "generation_jobs"
             referencedColumns: ["id"]
           },
         ]

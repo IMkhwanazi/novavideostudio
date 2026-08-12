@@ -1,9 +1,22 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
-import { estimateCredits, JOB_STAGE_COPY, type GenerationMode, type VideoSettings } from "./options";
+import {
+  estimateCredits,
+  JOB_STAGE_COPY,
+  segmentCount,
+  type GenerationMode,
+  type VideoSettings,
+} from "./options";
 import { getVideoProvider } from "./registry.server";
 
 type Client = SupabaseClient<Database>;
+
+export type SegmentView = {
+  idx: number;
+  status: string;
+  url: string | null;
+  scenePrompt: string;
+};
 
 export type JobView = {
   id: string;
@@ -14,6 +27,10 @@ export type JobView = {
   videoPath: string | null;
   projectId: string | null;
   videoUrl?: string | null;
+  totalSegments: number;
+  completedSegments: number;
+  merged: boolean;
+  segments: SegmentView[];
 };
 
 export function friendlyError(error: unknown): string {
@@ -39,14 +56,31 @@ export function friendlyError(error: unknown): string {
 
 async function signedUrl(client: Client, path: string | null) {
   if (!path) return null;
-  const { data } = await client.storage.from("videos").createSignedUrl(path, 60 * 60);
+  const { data } = await client.storage.from("videos").createSignedUrl(path, 60 * 60 * 6);
   return data?.signedUrl ?? null;
 }
 
 export async function toJobView(client: Client, row: Record<string, unknown>): Promise<JobView> {
   const videoPath = (row["video_path"] as string | null) ?? null;
+  const jobId = row["id"] as string;
+
+  const { data: segmentRows } = await client
+    .from("generation_segments")
+    .select("idx, status, video_path, scene_prompt")
+    .eq("job_id", jobId)
+    .order("idx", { ascending: true });
+
+  const segments: SegmentView[] = await Promise.all(
+    (segmentRows ?? []).map(async (segment) => ({
+      idx: segment.idx,
+      status: segment.status,
+      scenePrompt: segment.scene_prompt,
+      url: await signedUrl(client, segment.video_path),
+    })),
+  );
+
   return {
-    id: row["id"] as string,
+    id: jobId,
     status: row["status"] as string,
     progress: (row["progress"] as number) ?? 0,
     stageMessage: (row["stage_message"] as string) ?? "",
@@ -54,7 +88,15 @@ export async function toJobView(client: Client, row: Record<string, unknown>): P
     videoPath,
     projectId: (row["project_id"] as string | null) ?? null,
     videoUrl: await signedUrl(client, videoPath),
+    totalSegments: (row["total_segments"] as number) ?? segments.length || 1,
+    completedSegments: (row["completed_segments"] as number) ?? 0,
+    merged: Boolean(row["merged"]),
+    segments,
   };
+}
+
+function stageForSegments(done: number, total: number) {
+  return `Rendering scene ${Math.min(done + 1, total)} of ${total}...`;
 }
 
 export async function startGeneration(params: {
@@ -72,6 +114,7 @@ export async function startGeneration(params: {
 }) {
   const { client, admin, userId, settings } = params;
   const credits = estimateCredits(settings);
+  const total = segmentCount(settings.durationSeconds);
 
   // 1. Project
   let projectId = params.projectId ?? null;
@@ -136,39 +179,43 @@ export async function startGeneration(params: {
       user_id: userId,
       project_id: projectId,
       status: "queued",
-      progress: 5,
-      stage_message: JOB_STAGE_COPY["queued"]!,
+      progress: 3,
+      stage_message: "Planning your scenes...",
       provider: provider.id,
+      total_segments: total,
+      completed_segments: 0,
     })
     .select("*")
     .single();
   if (jobError) throw new Error(jobError.message);
 
-  // 5. Hand off to the provider
   try {
-    const input = {
-      prompt: params.enhancedPrompt?.trim() || params.prompt,
-      negativePrompt: params.negativePrompt ?? null,
-      settings,
-      inputImageDataUrl: params.inputImageDataUrl ?? null,
-    };
-    const providerJob =
-      params.mode === "image_to_video" && input.inputImageDataUrl
-        ? await provider.generateImageToVideo(input)
-        : await provider.generateVideo(input);
+    // 5. Plan the scenes and store one row per 8-second take.
+    const { planScenes } = await import("./planner.server");
+    const basePrompt = params.enhancedPrompt?.trim() || params.prompt;
+    const plan = await planScenes(basePrompt, settings);
 
-    const { data: updated } = await client
+    const rows = plan.scenes.slice(0, total).map((scene, idx) => ({
+      generation_id: generation.id,
+      job_id: job.id,
+      user_id: userId,
+      idx,
+      scene_prompt: plan.continuity ? `${scene}\n\nContinuity: ${plan.continuity}` : scene,
+    }));
+    const { error: segmentError } = await client.from("generation_segments").insert(rows);
+    if (segmentError) throw new Error(segmentError.message);
+
+    // 6. Kick off the first take.
+    await client
       .from("generation_jobs")
       .update({
-        provider_job_id: providerJob.id,
         status: "generating",
-        progress: Math.max(10, providerJob.progress),
-        stage_message: JOB_STAGE_COPY["generating"]!,
+        progress: 5,
+        stage_message: stageForSegments(0, total),
       })
-      .eq("id", job.id)
-      .select("*")
-      .single();
-    return toJobView(client, updated ?? job);
+      .eq("id", job.id);
+
+    return advanceJob(client, admin, userId, job.id);
   } catch (error) {
     await failJob(client, admin, job.id, userId, generation.id, credits, friendlyError(error));
     const view = await client.from("generation_jobs").select("*").eq("id", job.id).single();
@@ -198,7 +245,7 @@ export async function failJob(
   if (credits > 0) {
     await admin.rpc("refund_credits", {
       _user_id: userId,
-      _amount: credits,
+      _amount: Math.round(credits),
       _description: status === "cancelled" ? "Generation cancelled" : "Generation failed",
       _generation_id: generationId as string,
     });
@@ -211,82 +258,191 @@ export async function failJob(
   });
 }
 
+/** Credits for the scenes that never ran, so cancels and failures refund fairly. */
+export function unusedCredits(totalCredits: number, total: number, done: number) {
+  if (total <= 0) return totalCredits;
+  const remaining = Math.max(0, total - done);
+  return Math.round((totalCredits * remaining) / total);
+}
+
 export async function advanceJob(client: Client, admin: Client, userId: string, jobId: string) {
   const { data: job, error } = await client
     .from("generation_jobs")
-    .select("*, generations(id, credits_cost)")
+    .select("*, generations(id, credits_cost, settings)")
     .eq("id", jobId)
     .single();
   if (error || !job) throw new Error("Generation not found.");
 
   const terminal = ["completed", "failed", "cancelled"];
   if (terminal.includes(job.status)) return toJobView(client, job);
-  if (!job.provider_job_id) return toJobView(client, job);
 
-  const credits =
-    (job as unknown as { generations: { credits_cost: number } | null }).generations?.credits_cost ?? 0;
+  const meta = job as unknown as {
+    generations: { credits_cost: number; settings: unknown } | null;
+  };
+  const credits = meta.generations?.credits_cost ?? 0;
+  const settings = (meta.generations?.settings ?? {}) as VideoSettings;
   const generationId = job.generation_id;
   const provider = getVideoProvider(job.provider);
+  const total = job.total_segments || 1;
+
+  const { data: segments } = await client
+    .from("generation_segments")
+    .select("*")
+    .eq("job_id", jobId)
+    .order("idx", { ascending: true });
+
+  const list = segments ?? [];
+  const done = list.filter((s) => s.status === "completed").length;
+
+  async function syncProgress(extra: Record<string, unknown> = {}) {
+    const completed = list.filter((s) => s.status === "completed").length;
+    await client
+      .from("generation_jobs")
+      .update({
+        completed_segments: completed,
+        progress: Math.min(95, 5 + Math.round((completed / total) * 88)),
+        stage_message: stageForSegments(completed, total),
+        ...extra,
+      })
+      .eq("id", jobId);
+  }
 
   try {
-    const status = await provider.getGenerationStatus(job.provider_job_id);
+    const running = list.find((s) => s.status === "generating");
 
-    if (status.status === "failed") {
-      await failJob(client, admin, jobId, userId, generationId, credits, status.error ?? friendlyError(""));
-    } else if (status.status === "completed") {
-      await client
-        .from("generation_jobs")
-        .update({ status: "rendering", progress: 92, stage_message: JOB_STAGE_COPY["rendering"]! })
-        .eq("id", jobId);
+    if (running?.provider_job_id) {
+      const status = await provider.getGenerationStatus(running.provider_job_id);
 
-      const bytes = await provider.downloadVideo(job.provider_job_id);
-      const path = `${userId}/${jobId}.mp4`;
-      const { error: uploadError } = await admin.storage
-        .from("videos")
-        .upload(path, bytes, { contentType: "video/mp4", upsert: true });
-      if (uploadError) throw new Error(`PROVIDER_ERROR:${uploadError.message}`);
+      if (status.status === "completed") {
+        const bytes = await provider.downloadVideo(running.provider_job_id);
+        const path = `${userId}/${jobId}/scene-${String(running.idx).padStart(3, "0")}.mp4`;
+        const { error: uploadError } = await admin.storage
+          .from("videos")
+          .upload(path, bytes, { contentType: "video/mp4", upsert: true });
+        if (uploadError) throw new Error(`PROVIDER_ERROR:${uploadError.message}`);
 
-      await client
-        .from("generation_jobs")
-        .update({
-          status: "completed",
-          progress: 100,
-          video_path: path,
-          stage_message: JOB_STAGE_COPY["completed"]!,
-        })
-        .eq("id", jobId);
-
-      if (job.project_id) {
         await client
-          .from("projects")
+          .from("generation_segments")
           .update({ status: "completed", video_path: path })
-          .eq("id", job.project_id);
+          .eq("id", running.id);
+        running.status = "completed";
+        running.video_path = path;
+        await syncProgress();
+      } else if (status.status === "failed") {
+        if (running.attempts < 2) {
+          await client
+            .from("generation_segments")
+            .update({ status: "pending", provider_job_id: null, error_message: status.error ?? null })
+            .eq("id", running.id);
+          running.status = "pending";
+        } else {
+          await failJob(
+            client,
+            admin,
+            jobId,
+            userId,
+            generationId,
+            unusedCredits(credits, total, done),
+            `Scene ${running.idx + 1} couldn't be rendered. ${status.error ?? ""}`.trim(),
+          );
+          const { data: failed } = await client.from("generation_jobs").select("*").eq("id", jobId).single();
+          return toJobView(client, failed ?? job);
+        }
+      } else {
+        await syncProgress();
       }
-
-      await client.from("notifications").insert({
-        user_id: userId,
-        title: "Video generation complete",
-        body: "Your video is ready to preview.",
-        kind: "success",
-      });
     } else {
+      // Nothing running: start the next scene, one at a time.
+      const next = list.find((s) => s.status === "pending");
+      if (next) {
+        const providerJob = await provider.generateVideo({
+          prompt: next.scene_prompt,
+          settings,
+          negativePrompt: null,
+          inputImageDataUrl: null,
+        });
+        await client
+          .from("generation_segments")
+          .update({
+            status: "generating",
+            provider_job_id: providerJob.id,
+            attempts: next.attempts + 1,
+            error_message: null,
+          })
+          .eq("id", next.id);
+        next.status = "generating";
+        await syncProgress();
+      }
+    }
+
+    // All scenes stored: hand the merge over to the browser.
+    const remaining = list.filter((s) => s.status !== "completed").length;
+    if (remaining === 0 && list.length > 0) {
       await client
         .from("generation_jobs")
         .update({
-          status: "generating",
-          progress: Math.min(90, Math.max(job.progress, status.progress || job.progress + 4)),
-          stage_message: JOB_STAGE_COPY["generating"]!,
+          status: "rendering",
+          progress: 96,
+          completed_segments: list.length,
+          stage_message: "Joining scenes into your final video...",
         })
         .eq("id", jobId);
     }
   } catch (caught) {
-    const message = friendlyError(caught);
-    // Transient rate limiting should not kill the job.
+    // Transient rate limiting should not kill the job — poll again shortly.
     if (caught instanceof Error && caught.message.startsWith("RATE_LIMITED")) {
       return toJobView(client, job);
     }
-    await failJob(client, admin, jobId, userId, generationId, credits, message);
+    await failJob(
+      client,
+      admin,
+      jobId,
+      userId,
+      generationId,
+      unusedCredits(credits, total, done),
+      friendlyError(caught),
+    );
   }
+
+  const { data: fresh } = await client.from("generation_jobs").select("*").eq("id", jobId).single();
+  return toJobView(client, fresh ?? job);
+}
+
+/** Called once the browser has merged the scenes and uploaded the final MP4. */
+export async function completeJob(
+  client: Client,
+  userId: string,
+  jobId: string,
+  videoPath: string | null,
+) {
+  const { data: job } = await client.from("generation_jobs").select("*").eq("id", jobId).single();
+  if (!job) throw new Error("Generation not found.");
+
+  await client
+    .from("generation_jobs")
+    .update({
+      status: "completed",
+      progress: 100,
+      video_path: videoPath,
+      merged: Boolean(videoPath),
+      stage_message: JOB_STAGE_COPY["completed"]!,
+      error_message: null,
+    })
+    .eq("id", jobId);
+
+  if (job.project_id) {
+    await client
+      .from("projects")
+      .update({ status: "completed", ...(videoPath ? { video_path: videoPath } : {}) })
+      .eq("id", job.project_id);
+  }
+
+  await client.from("notifications").insert({
+    user_id: userId,
+    title: "Video generation complete",
+    body: "Your video is ready to preview.",
+    kind: "success",
+  });
 
   const { data: fresh } = await client.from("generation_jobs").select("*").eq("id", jobId).single();
   return toJobView(client, fresh ?? job);

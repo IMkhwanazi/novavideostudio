@@ -70,6 +70,19 @@ export const MODEL_TIERS: {
 export const DURATIONS = [60, 90, 120, 180, 240, 300, 360] as const;
 export const LOCKED_DURATIONS = [] as const;
 
+/** The video engine renders in 8-second takes; longer films are stitched from many. */
+export const SEGMENT_SECONDS = 8;
+
+export function segmentCount(durationSeconds: number) {
+  return Math.max(1, Math.ceil(durationSeconds / SEGMENT_SECONDS));
+}
+
+/** Rough wall-clock estimate: each 8s scene takes ~1-2 minutes to render. */
+export function estimateWait(durationSeconds: number) {
+  const scenes = segmentCount(durationSeconds);
+  return `~${scenes}-${scenes * 2} min`;
+}
+
 export function formatDuration(seconds: number) {
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
