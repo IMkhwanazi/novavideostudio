@@ -127,7 +127,7 @@ function Studio() {
       setMerging(true);
       let videoPath: string | null = null;
       try {
-        const { mergeSegments } = await import("@/lib/video/merge.client");
+        const { mergeSegments } = await import("@/lib/video/merge-browser");
         const blob = await mergeSegments(urls);
         const path = `${user.id}/${jobId}/final.mp4`;
         const { error } = await supabase.storage
