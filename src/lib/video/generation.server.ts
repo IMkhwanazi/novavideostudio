@@ -36,7 +36,7 @@ export type JobView = {
 export function friendlyError(error: unknown): string {
   const raw = error instanceof Error ? error.message : String(error);
   if (raw.startsWith("OUT_OF_CREDITS")) {
-    return "The video service is temporarily out of capacity. Please try again shortly.";
+    return "The AI video balance for this workspace is used up, so the engine refused the render. Add credits (Settings → Plans & credits) and generations will work again right away.";
   }
   if (raw.startsWith("RATE_LIMITED")) {
     return "Too many videos are generating right now. Wait a moment and try again.";
@@ -139,7 +139,27 @@ export async function startGeneration(params: {
     await client.from("projects").update({ status: "generating" }).eq("id", projectId);
   }
 
-  // 2. Generation record
+  // 2. Plan the scenes up front (cheap text call) so we can submit take 1 as a
+  //    real pre-flight check before anything is charged.
+  const provider = getVideoProvider();
+  const { planScenes } = await import("./planner.server");
+  const basePrompt = params.enhancedPrompt?.trim() || params.prompt;
+  const plan = await planScenes(basePrompt, settings);
+  const scenePrompts = plan.scenes
+    .slice(0, total)
+    .map((scene) => (plan.continuity ? `${scene}\n\nContinuity: ${plan.continuity}` : scene));
+  while (scenePrompts.length < total) scenePrompts.push(basePrompt);
+
+  // 3. Pre-flight: submit the first take. If the engine refuses (no balance,
+  //    rate limit, bad prompt) we stop here having charged the user nothing.
+  const firstJob = await provider.generateVideo({
+    prompt: scenePrompts[0]!,
+    settings,
+    negativePrompt: params.negativePrompt ?? null,
+    inputImageDataUrl: params.inputImageDataUrl ?? null,
+  });
+
+  // 4. Generation record
   const { data: generation, error: generationError } = await client
     .from("generations")
     .insert({

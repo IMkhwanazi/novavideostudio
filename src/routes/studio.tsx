@@ -335,7 +335,9 @@ function Studio() {
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {MODEL_TIERS.map((t) => (
-                    <SelectItem key={t.id} value={t.id}>{t.label}</SelectItem>
+                    <SelectItem key={t.id} value={t.id}>
+                      {t.label} — {t.cost}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
