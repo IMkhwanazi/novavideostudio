@@ -60,11 +60,12 @@ export const MODEL_TIERS: {
   speed: string;
   quality: string;
   multiplier: number;
+  cost: string;
 }[] = [
-  { id: "fast", label: "Fast", speed: "Fastest", quality: "Good", multiplier: 0.7 },
-  { id: "balanced", label: "Balanced", speed: "Fast", quality: "Great", multiplier: 1 },
-  { id: "cinematic", label: "Cinematic", speed: "Moderate", quality: "Excellent", multiplier: 1.6 },
-  { id: "quality", label: "High Quality", speed: "Slowest", quality: "Maximum", multiplier: 2.4 },
+  { id: "fast", label: "Fast", speed: "Fastest", quality: "Good", multiplier: 0.7, cost: "Lowest cost" },
+  { id: "balanced", label: "Balanced", speed: "Fast", quality: "Great", multiplier: 1, cost: "Low cost" },
+  { id: "cinematic", label: "Cinematic", speed: "Moderate", quality: "Excellent", multiplier: 1.6, cost: "Higher cost" },
+  { id: "quality", label: "High Quality", speed: "Slowest", quality: "Maximum", multiplier: 2.4, cost: "Highest cost" },
 ];
 
 export const DURATIONS = [60, 90, 120, 180, 240, 300, 360] as const;
@@ -152,7 +153,7 @@ export const DEFAULT_SETTINGS: VideoSettings = {
   style: "Cinematic",
   camera: "Dolly",
   lighting: "Golden Hour",
-  modelTier: "balanced",
+  modelTier: "fast",
 };
 
 /** Credits are charged per second of finished video, scaled by tier and resolution. */
