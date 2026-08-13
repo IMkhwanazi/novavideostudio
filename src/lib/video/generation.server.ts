@@ -36,7 +36,7 @@ export type JobView = {
 export function friendlyError(error: unknown): string {
   const raw = error instanceof Error ? error.message : String(error);
   if (raw.startsWith("OUT_OF_CREDITS")) {
-    return "The video service is temporarily out of capacity. Please try again shortly.";
+    return "The AI video balance for this workspace is used up, so the engine refused the render. Add credits (Settings → Plans & credits) and generations will work again right away.";
   }
   if (raw.startsWith("RATE_LIMITED")) {
     return "Too many videos are generating right now. Wait a moment and try again.";
