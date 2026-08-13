@@ -17,6 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useAuth } from "@/hooks/useAuth";
+import { supabase } from "@/integrations/supabase/client";
 import {
   ASPECT_RATIOS,
   CAMERA_MOVES,
@@ -29,12 +30,15 @@ import {
   RESOLUTIONS,
   VISUAL_STYLES,
   estimateCredits,
+  estimateWait,
+  segmentCount,
   type VideoSettings,
 } from "@/lib/video/options";
 import {
   cancelGeneration,
   createGeneration,
   enhancePrompt,
+  finalizeGeneration,
   getStudioState,
   pollGeneration,
 } from "@/lib/video/video.functions";
@@ -60,18 +64,21 @@ type JobView = Awaited<ReturnType<typeof pollGeneration>>;
 
 function Studio() {
   const queryClient = useQueryClient();
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, loading, user } = useAuth();
 
   const [prompt, setPrompt] = useState("");
   const [settings, setSettings] = useState<VideoSettings>(DEFAULT_SETTINGS);
   const [activeJob, setActiveJob] = useState<JobView | null>(null);
+  const [merging, setMerging] = useState(false);
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mergedRef = useRef<string | null>(null);
 
   const fetchState = useServerFn(getStudioState);
   const runEnhance = useServerFn(enhancePrompt);
   const runCreate = useServerFn(createGeneration);
   const runPoll = useServerFn(pollGeneration);
   const runCancel = useServerFn(cancelGeneration);
+  const runFinalize = useServerFn(finalizeGeneration);
 
   const state = useQuery({
     queryKey: ["studio-state"],
@@ -80,10 +87,14 @@ function Studio() {
   });
 
   const credits = estimateCredits(settings);
-  const busy = activeJob !== null && !["completed", "failed", "cancelled"].includes(activeJob.status);
+  const scenes = segmentCount(settings.durationSeconds);
+  const generating =
+    activeJob !== null &&
+    !["completed", "failed", "cancelled", "rendering"].includes(activeJob.status);
+  const busy = generating || merging || activeJob?.status === "rendering";
 
   useEffect(() => {
-    if (!activeJob || !busy) return;
+    if (!activeJob || !generating) return;
     pollRef.current = setTimeout(async () => {
       try {
         const next = await runPoll({ data: { jobId: activeJob.id } });
@@ -96,11 +107,50 @@ function Studio() {
       } catch (error) {
         console.error(error);
       }
-    }, 6000);
+    }, 10000);
     return () => {
       if (pollRef.current) clearTimeout(pollRef.current);
     };
-  }, [activeJob, busy, runPoll, queryClient]);
+  }, [activeJob, generating, runPoll, queryClient]);
+
+  // Every scene is rendered: join them into one MP4 in the browser and store it.
+  useEffect(() => {
+    if (!activeJob || activeJob.status !== "rendering" || !user) return;
+    if (mergedRef.current === activeJob.id) return;
+    mergedRef.current = activeJob.id;
+    const jobId = activeJob.id;
+    const urls = activeJob.segments
+      .filter((segment) => segment.url)
+      .map((segment) => segment.url as string);
+
+    (async () => {
+      setMerging(true);
+      let videoPath: string | null = null;
+      try {
+        const { mergeSegments } = await import("@/lib/video/merge.client");
+        const blob = await mergeSegments(urls);
+        const path = `${user.id}/${jobId}/final.mp4`;
+        const { error } = await supabase.storage
+          .from("videos")
+          .upload(path, blob, { contentType: "video/mp4", upsert: true });
+        if (error) throw error;
+        videoPath = path;
+      } catch (error) {
+        console.error("[merge]", error);
+        toast.error("Scenes are ready, but joining them into one file failed. You can still play them.");
+      }
+      try {
+        const next = await runFinalize({ data: { jobId, videoPath } });
+        setActiveJob(next);
+        queryClient.invalidateQueries({ queryKey: ["studio-state"] });
+        if (videoPath) toast.success("Your video is ready.");
+      } catch (error) {
+        console.error(error);
+      } finally {
+        setMerging(false);
+      }
+    })();
+  }, [activeJob, user, runFinalize, queryClient]);
 
   const enhance = useMutation({
     mutationFn: () => runEnhance({ data: { prompt, settings } }),
@@ -119,6 +169,7 @@ function Studio() {
         toast.error(result.error);
         return;
       }
+      mergedRef.current = null;
       setActiveJob(result.job);
       queryClient.invalidateQueries({ queryKey: ["studio-state"] });
     },
@@ -195,7 +246,9 @@ function Studio() {
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {DURATIONS.map((d) => (
-                    <SelectItem key={d} value={String(d)}>{formatDuration(d)}</SelectItem>
+                    <SelectItem key={d} value={String(d)}>
+                      {formatDuration(d)} · {segmentCount(d)} scenes
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -293,6 +346,11 @@ function Studio() {
             <span className="text-muted-foreground">Estimated cost</span>
             <span className="font-medium">{credits} credits</span>
           </div>
+          <p className="-mt-3 text-xs text-muted-foreground">
+            {scenes} cinematic scenes of 8s, rendered one after another and joined into a single MP4.
+            Estimated time {estimateWait(settings.durationSeconds)}.
+            {settings.durationSeconds > 120 && " Long films take a while — keep this tab open."}
+          </p>
 
           <Button
             className="h-11 w-full bg-gradient-brand text-primary-foreground glow-ring"
@@ -328,11 +386,57 @@ function Studio() {
             ) : busy ? (
               <div className="w-full max-w-md text-center">
                 <Loader2 className="mx-auto size-6 animate-spin text-primary" />
-                <p className="mt-4 text-sm text-foreground">{activeJob?.stageMessage}</p>
-                <Progress value={activeJob?.progress ?? 0} className="mt-4" />
-                <Button variant="ghost" size="sm" className="mt-4" onClick={onCancel}>
-                  <X className="mr-1.5 size-4" /> Cancel
-                </Button>
+                <p className="mt-4 text-sm text-foreground">
+                  {merging ? "Joining scenes into your final video..." : activeJob?.stageMessage}
+                </p>
+                <Progress value={merging ? 98 : (activeJob?.progress ?? 0)} className="mt-4" />
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Scene {Math.min((activeJob?.completedSegments ?? 0) + 1, activeJob?.totalSegments ?? 1)} of{" "}
+                  {activeJob?.totalSegments ?? 1}
+                </p>
+                {(activeJob?.segments.length ?? 0) > 0 && (
+                  <div className="mt-4 flex flex-wrap justify-center gap-1.5">
+                    {activeJob!.segments.map((segment) => (
+                      <span
+                        key={segment.idx}
+                        title={`Scene ${segment.idx + 1}`}
+                        className={`h-1.5 w-6 rounded-full ${
+                          segment.status === "completed"
+                            ? "bg-primary"
+                            : segment.status === "generating"
+                              ? "bg-primary/50 animate-pulse"
+                              : "bg-border"
+                        }`}
+                      />
+                    ))}
+                  </div>
+                )}
+                {activeJob?.segments.some((segment) => segment.url) && (
+                  <video
+                    key={activeJob.segments.filter((s) => s.url).at(-1)?.idx}
+                    src={activeJob.segments.filter((s) => s.url).at(-1)?.url ?? undefined}
+                    controls
+                    playsInline
+                    className="mt-4 w-full rounded-xl border border-border/60 bg-black"
+                  />
+                )}
+                {!merging && (
+                  <Button variant="ghost" size="sm" className="mt-4" onClick={onCancel}>
+                    <X className="mr-1.5 size-4" /> Cancel
+                  </Button>
+                )}
+              </div>
+            ) : activeJob?.status === "completed" && activeJob.segments.some((s) => s.url) ? (
+              <div className="w-full">
+                <video
+                  src={activeJob.segments.find((s) => s.url)?.url ?? undefined}
+                  controls
+                  playsInline
+                  className="w-full rounded-xl border border-border/60 bg-black"
+                />
+                <p className="mt-3 text-xs text-muted-foreground">
+                  Scenes rendered, but they couldn't be joined into one file. Play them individually below.
+                </p>
               </div>
             ) : (
               <div className="text-center">

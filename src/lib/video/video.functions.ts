@@ -89,7 +89,7 @@ export const cancelGeneration = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => z.object({ jobId: z.string().uuid() }).parse(input))
   .handler(async ({ data, context }) => {
-    const { failJob, toJobView } = await import("./generation.server");
+    const { failJob, toJobView, unusedCredits } = await import("./generation.server");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     const { data: job } = await context.supabase
@@ -110,7 +110,7 @@ export const cancelGeneration = createServerFn({ method: "POST" })
       data.jobId,
       context.userId,
       job.generation_id,
-      credits,
+      unusedCredits(credits, job.total_segments || 1, job.completed_segments || 0),
       "You cancelled this generation. Credits were returned.",
       "cancelled",
     );
@@ -120,6 +120,26 @@ export const cancelGeneration = createServerFn({ method: "POST" })
       .eq("id", data.jobId)
       .single();
     return toJobView(context.supabase, fresh ?? job);
+  });
+
+export const finalizeGeneration = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) =>
+    z
+      .object({
+        jobId: z.string().uuid(),
+        videoPath: z.string().max(400).nullable().optional(),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    const { completeJob } = await import("./generation.server");
+    const path = data.videoPath ?? null;
+    // A client may only claim a file inside its own storage folder.
+    if (path && !path.startsWith(`${context.userId}/`)) {
+      throw new Error("Invalid video path.");
+    }
+    return completeJob(context.supabase, context.userId, data.jobId, path);
   });
 
 export const getStudioState = createServerFn({ method: "GET" })

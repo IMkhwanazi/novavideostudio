@@ -88,7 +88,7 @@ export async function toJobView(client: Client, row: Record<string, unknown>): P
     videoPath,
     projectId: (row["project_id"] as string | null) ?? null,
     videoUrl: await signedUrl(client, videoPath),
-    totalSegments: (row["total_segments"] as number) ?? segments.length || 1,
+    totalSegments: (row["total_segments"] as number) || segments.length || 1,
     completedSegments: (row["completed_segments"] as number) ?? 0,
     merged: Boolean(row["merged"]),
     segments,
