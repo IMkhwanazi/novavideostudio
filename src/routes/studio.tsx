@@ -386,11 +386,57 @@ function Studio() {
             ) : busy ? (
               <div className="w-full max-w-md text-center">
                 <Loader2 className="mx-auto size-6 animate-spin text-primary" />
-                <p className="mt-4 text-sm text-foreground">{activeJob?.stageMessage}</p>
-                <Progress value={activeJob?.progress ?? 0} className="mt-4" />
-                <Button variant="ghost" size="sm" className="mt-4" onClick={onCancel}>
-                  <X className="mr-1.5 size-4" /> Cancel
-                </Button>
+                <p className="mt-4 text-sm text-foreground">
+                  {merging ? "Joining scenes into your final video..." : activeJob?.stageMessage}
+                </p>
+                <Progress value={merging ? 98 : (activeJob?.progress ?? 0)} className="mt-4" />
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Scene {Math.min((activeJob?.completedSegments ?? 0) + 1, activeJob?.totalSegments ?? 1)} of{" "}
+                  {activeJob?.totalSegments ?? 1}
+                </p>
+                {(activeJob?.segments.length ?? 0) > 0 && (
+                  <div className="mt-4 flex flex-wrap justify-center gap-1.5">
+                    {activeJob!.segments.map((segment) => (
+                      <span
+                        key={segment.idx}
+                        title={`Scene ${segment.idx + 1}`}
+                        className={`h-1.5 w-6 rounded-full ${
+                          segment.status === "completed"
+                            ? "bg-primary"
+                            : segment.status === "generating"
+                              ? "bg-primary/50 animate-pulse"
+                              : "bg-border"
+                        }`}
+                      />
+                    ))}
+                  </div>
+                )}
+                {activeJob?.segments.some((segment) => segment.url) && (
+                  <video
+                    key={activeJob.segments.filter((s) => s.url).at(-1)?.idx}
+                    src={activeJob.segments.filter((s) => s.url).at(-1)?.url ?? undefined}
+                    controls
+                    playsInline
+                    className="mt-4 w-full rounded-xl border border-border/60 bg-black"
+                  />
+                )}
+                {!merging && (
+                  <Button variant="ghost" size="sm" className="mt-4" onClick={onCancel}>
+                    <X className="mr-1.5 size-4" /> Cancel
+                  </Button>
+                )}
+              </div>
+            ) : activeJob?.status === "completed" && activeJob.segments.some((s) => s.url) ? (
+              <div className="w-full">
+                <video
+                  src={activeJob.segments.find((s) => s.url)?.url ?? undefined}
+                  controls
+                  playsInline
+                  className="w-full rounded-xl border border-border/60 bg-black"
+                />
+                <p className="mt-3 text-xs text-muted-foreground">
+                  Scenes rendered, but they couldn't be joined into one file. Play them individually below.
+                </p>
               </div>
             ) : (
               <div className="text-center">
