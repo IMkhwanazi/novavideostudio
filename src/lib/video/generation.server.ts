@@ -177,7 +177,7 @@ export async function startGeneration(params: {
     .single();
   if (generationError) throw new Error(generationError.message);
 
-  // 3. Reserve credits atomically (throws when the balance is too low)
+  // 5. Reserve credits atomically (throws when the balance is too low)
   const { error: spendError } = await admin.rpc("spend_credits", {
     _user_id: userId,
     _amount: credits,
@@ -190,17 +190,16 @@ export async function startGeneration(params: {
     throw new Error(spendError.message);
   }
 
-  // 4. Job row
-  const provider = getVideoProvider();
+  // 6. Job row
   const { data: job, error: jobError } = await client
     .from("generation_jobs")
     .insert({
       generation_id: generation.id,
       user_id: userId,
       project_id: projectId,
-      status: "queued",
-      progress: 3,
-      stage_message: "Planning your scenes...",
+      status: "generating",
+      progress: 5,
+      stage_message: stageForSegments(0, total),
       provider: provider.id,
       total_segments: total,
       completed_segments: 0,
@@ -210,30 +209,19 @@ export async function startGeneration(params: {
   if (jobError) throw new Error(jobError.message);
 
   try {
-    // 5. Plan the scenes and store one row per 8-second take.
-    const { planScenes } = await import("./planner.server");
-    const basePrompt = params.enhancedPrompt?.trim() || params.prompt;
-    const plan = await planScenes(basePrompt, settings);
-
-    const rows = plan.scenes.slice(0, total).map((scene, idx) => ({
+    // 7. One row per 8-second take; take 1 is already running at the engine.
+    const rows = scenePrompts.map((scene, idx) => ({
       generation_id: generation.id,
       job_id: job.id,
       user_id: userId,
       idx,
-      scene_prompt: plan.continuity ? `${scene}\n\nContinuity: ${plan.continuity}` : scene,
+      scene_prompt: scene,
+      ...(idx === 0
+        ? { status: "generating", provider_job_id: firstJob.id, attempts: 1 }
+        : {}),
     }));
     const { error: segmentError } = await client.from("generation_segments").insert(rows);
     if (segmentError) throw new Error(segmentError.message);
-
-    // 6. Kick off the first take.
-    await client
-      .from("generation_jobs")
-      .update({
-        status: "generating",
-        progress: 5,
-        stage_message: stageForSegments(0, total),
-      })
-      .eq("id", job.id);
 
     return advanceJob(client, admin, userId, job.id);
   } catch (error) {
