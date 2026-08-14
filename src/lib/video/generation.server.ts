@@ -408,6 +408,34 @@ export async function advanceJob(client: Client, admin: Client, userId: string, 
     if (caught instanceof Error && caught.message.startsWith("RATE_LIMITED")) {
       return toJobView(client, job);
     }
+    // Balance exhausted mid-film: keep every scene already rendered, refund the
+    // rest, and let the browser join what exists instead of hanging.
+    if (caught instanceof Error && caught.message.startsWith("OUT_OF_CREDITS") && done > 0) {
+      await admin.rpc("refund_credits", {
+        _user_id: userId,
+        _amount: unusedCredits(credits, total, done),
+        _description: "Scenes not rendered",
+        _generation_id: generationId as string,
+      });
+      await client
+        .from("generation_segments")
+        .update({ status: "skipped" })
+        .eq("job_id", jobId)
+        .neq("status", "completed");
+      await client
+        .from("generation_jobs")
+        .update({
+          status: "rendering",
+          progress: 96,
+          total_segments: done,
+          completed_segments: done,
+          error_message: friendlyError(caught),
+          stage_message: `Joining the ${done} scenes that finished...`,
+        })
+        .eq("id", jobId);
+      const { data: partial } = await client.from("generation_jobs").select("*").eq("id", jobId).single();
+      return toJobView(client, partial ?? job);
+    }
     await failJob(
       client,
       admin,
