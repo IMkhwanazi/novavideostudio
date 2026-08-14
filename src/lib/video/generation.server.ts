@@ -152,12 +152,19 @@ export async function startGeneration(params: {
 
   // 3. Pre-flight: submit the first take. If the engine refuses (no balance,
   //    rate limit, bad prompt) we stop here having charged the user nothing.
-  const firstJob = await provider.generateVideo({
-    prompt: scenePrompts[0]!,
-    settings,
-    negativePrompt: params.negativePrompt ?? null,
-    inputImageDataUrl: params.inputImageDataUrl ?? null,
-  });
+  let firstJob;
+  try {
+    firstJob = await provider.generateVideo({
+      prompt: scenePrompts[0]!,
+      settings,
+      negativePrompt: params.negativePrompt ?? null,
+      inputImageDataUrl: params.inputImageDataUrl ?? null,
+    });
+  } catch (error) {
+    // Nothing has been charged yet — leave the project idle and report the reason.
+    await client.from("projects").update({ status: "draft" }).eq("id", projectId);
+    throw error;
+  }
 
   // 4. Generation record
   const { data: generation, error: generationError } = await client
