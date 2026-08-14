@@ -69,6 +69,7 @@ function Studio() {
   const [prompt, setPrompt] = useState("");
   const [settings, setSettings] = useState<VideoSettings>(DEFAULT_SETTINGS);
   const [activeJob, setActiveJob] = useState<JobView | null>(null);
+  const [startError, setStartError] = useState<string | null>(null);
   const [merging, setMerging] = useState(false);
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mergedRef = useRef<string | null>(null);
@@ -166,14 +167,19 @@ function Studio() {
       runCreate({ data: { mode: "text_to_video" as const, prompt, settings } }),
     onSuccess: (result) => {
       if (!result.ok) {
+        setStartError(result.error);
         toast.error(result.error);
         return;
       }
+      setStartError(null);
       mergedRef.current = null;
       setActiveJob(result.job);
       queryClient.invalidateQueries({ queryKey: ["studio-state"] });
     },
-    onError: () => toast.error("Couldn't start that generation."),
+    onError: () => {
+      setStartError("Couldn't start that generation.");
+      toast.error("Couldn't start that generation.");
+    },
   });
 
   async function onCancel() {
@@ -442,8 +448,14 @@ function Studio() {
               </div>
             ) : (
               <div className="text-center">
-                <p className="text-sm text-muted-foreground">
-                  {activeJob?.errorMessage ?? "Your generated video will appear here."}
+                <p
+                  className={
+                    startError || activeJob?.errorMessage
+                      ? "mx-auto max-w-md text-sm text-destructive"
+                      : "text-sm text-muted-foreground"
+                  }
+                >
+                  {startError ?? activeJob?.errorMessage ?? "Your generated video will appear here."}
                 </p>
               </div>
             )}

@@ -152,12 +152,19 @@ export async function startGeneration(params: {
 
   // 3. Pre-flight: submit the first take. If the engine refuses (no balance,
   //    rate limit, bad prompt) we stop here having charged the user nothing.
-  const firstJob = await provider.generateVideo({
-    prompt: scenePrompts[0]!,
-    settings,
-    negativePrompt: params.negativePrompt ?? null,
-    inputImageDataUrl: params.inputImageDataUrl ?? null,
-  });
+  let firstJob;
+  try {
+    firstJob = await provider.generateVideo({
+      prompt: scenePrompts[0]!,
+      settings,
+      negativePrompt: params.negativePrompt ?? null,
+      inputImageDataUrl: params.inputImageDataUrl ?? null,
+    });
+  } catch (error) {
+    // Nothing has been charged yet — leave the project idle and report the reason.
+    await client.from("projects").update({ status: "draft" }).eq("id", projectId);
+    throw error;
+  }
 
   // 4. Generation record
   const { data: generation, error: generationError } = await client
@@ -177,7 +184,7 @@ export async function startGeneration(params: {
     .single();
   if (generationError) throw new Error(generationError.message);
 
-  // 3. Reserve credits atomically (throws when the balance is too low)
+  // 5. Reserve credits atomically (throws when the balance is too low)
   const { error: spendError } = await admin.rpc("spend_credits", {
     _user_id: userId,
     _amount: credits,
@@ -190,17 +197,16 @@ export async function startGeneration(params: {
     throw new Error(spendError.message);
   }
 
-  // 4. Job row
-  const provider = getVideoProvider();
+  // 6. Job row
   const { data: job, error: jobError } = await client
     .from("generation_jobs")
     .insert({
       generation_id: generation.id,
       user_id: userId,
       project_id: projectId,
-      status: "queued",
-      progress: 3,
-      stage_message: "Planning your scenes...",
+      status: "generating",
+      progress: 5,
+      stage_message: stageForSegments(0, total),
       provider: provider.id,
       total_segments: total,
       completed_segments: 0,
@@ -210,30 +216,19 @@ export async function startGeneration(params: {
   if (jobError) throw new Error(jobError.message);
 
   try {
-    // 5. Plan the scenes and store one row per 8-second take.
-    const { planScenes } = await import("./planner.server");
-    const basePrompt = params.enhancedPrompt?.trim() || params.prompt;
-    const plan = await planScenes(basePrompt, settings);
-
-    const rows = plan.scenes.slice(0, total).map((scene, idx) => ({
+    // 7. One row per 8-second take; take 1 is already running at the engine.
+    const rows = scenePrompts.map((scene, idx) => ({
       generation_id: generation.id,
       job_id: job.id,
       user_id: userId,
       idx,
-      scene_prompt: plan.continuity ? `${scene}\n\nContinuity: ${plan.continuity}` : scene,
+      scene_prompt: scene,
+      ...(idx === 0
+        ? { status: "generating", provider_job_id: firstJob.id, attempts: 1 }
+        : {}),
     }));
     const { error: segmentError } = await client.from("generation_segments").insert(rows);
     if (segmentError) throw new Error(segmentError.message);
-
-    // 6. Kick off the first take.
-    await client
-      .from("generation_jobs")
-      .update({
-        status: "generating",
-        progress: 5,
-        stage_message: stageForSegments(0, total),
-      })
-      .eq("id", job.id);
 
     return advanceJob(client, admin, userId, job.id);
   } catch (error) {
@@ -412,6 +407,34 @@ export async function advanceJob(client: Client, admin: Client, userId: string, 
     // Transient rate limiting should not kill the job — poll again shortly.
     if (caught instanceof Error && caught.message.startsWith("RATE_LIMITED")) {
       return toJobView(client, job);
+    }
+    // Balance exhausted mid-film: keep every scene already rendered, refund the
+    // rest, and let the browser join what exists instead of hanging.
+    if (caught instanceof Error && caught.message.startsWith("OUT_OF_CREDITS") && done > 0) {
+      await admin.rpc("refund_credits", {
+        _user_id: userId,
+        _amount: unusedCredits(credits, total, done),
+        _description: "Scenes not rendered",
+        _generation_id: generationId as string,
+      });
+      await client
+        .from("generation_segments")
+        .update({ status: "skipped" })
+        .eq("job_id", jobId)
+        .neq("status", "completed");
+      await client
+        .from("generation_jobs")
+        .update({
+          status: "rendering",
+          progress: 96,
+          total_segments: done,
+          completed_segments: done,
+          error_message: friendlyError(caught),
+          stage_message: `Joining the ${done} scenes that finished...`,
+        })
+        .eq("id", jobId);
+      const { data: partial } = await client.from("generation_jobs").select("*").eq("id", jobId).single();
+      return toJobView(client, partial ?? job);
     }
     await failJob(
       client,
